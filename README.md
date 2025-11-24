@@ -2,6 +2,11 @@
 
 CLI tool to predict next-day closing prices for SET50 tickers with reproducible, leakage-aware training and evaluation.
 
+### Highlights
+- Robustness: รองรับการจัดการ Error และ Missing Values รวมถึงมี Baseline Comparison เพื่อยืนยันประสิทธิภาพโมเดล
+- Leakage-Aware: ออกแบบ Pipeline โดยคำนึงถึง Time-series constraint (No shuffling, Split-then-scale strategy)
+- Modern Stack: รองรับ XGBoost และ Hyperparameter tuning ผ่าน CLI Argument
+
 ## Setup
 
 ```bash
@@ -19,9 +24,13 @@ python train.py --ticker PTT.BK --model rf --epochs 200
 ```
 
 Key flags:
-- `--model`: `linear`, `ridge`, `lasso`, `rf` (default `rf`)
+- `--model`: `linear`, `ridge`, `lasso`, `rf`, `xgb` (default `rf`)
 - `--epochs`: Trees for RF or max iterations cap for linear variants.
 - `--alpha`: Regularization strength for ridge/lasso.
+- `--learning-rate`: Learning rate for `xgb`.
+- `--tune`: Lightweight grid search for `rf`/`xgb` using a validation split (`--val-ratio`, default 0.15).
+- `--walkfolds`: Walk-forward expanding-window folds for tuning (e.g., 3–5); overrides single holdout when >0.
+- `--target-type`: `price` (next-day close) or `return` (next-day pct return).
 - `--scaler`: `standard`, `minmax`, or `none` (fit on train only).
 - `--train-ratio`: Time-based split ratio (default 0.8).
 - `--years`: Years of daily history to download (default 5).
@@ -35,11 +44,11 @@ Outputs land in `experiments/<ticker>_<timestamp>/`:
 ## Pipeline
 
 1. **Data**: Download 5y+ daily OHLCV via `yfinance`; interpolate/forward/back-fill missing values.
-2. **Features**: RSI(14), MACD (+signal/hist), Bollinger Bands (20), SMA20, EMA20, lagged Close/Volume (1,2), Return_Lag1, DayOfWeek, Month.
-3. **Target**: `Target = Close.shift(-1)` (next-day close). Rows with NaNs from indicator windows are dropped.
+2. **Features**: RSI(14), ATR(14), MACD (+signal/hist), Bollinger Bands (20), SMA20, EMA20, lagged Close/Volume (1–3), Return_Lag1/2, DayOfWeek, Month.
+3. **Target**: `Target = Close.shift(-1)` (price) or `Return.shift(-1)` (pct return). Rows with NaNs from indicator windows are dropped.
 4. **Split**: Strict time-based 80/20 (no shuffling).
 5. **Scaling**: Standard or MinMax on features only; fit on train, transform test.
-6. **Models**: Linear Regression, Ridge/Lasso (optional regularization), Random Forest (configurable depth/trees).
+6. **Models**: Linear Regression, Ridge/Lasso (optional regularization), Random Forest (configurable depth/trees), XGBoost Regressor (depth/trees/learning-rate).
 7. **Evaluation**: RMSE, MAE, MAPE, Directional Accuracy vs same-day Close baseline; naive RMSE (predict t+1 = t).
 8. **Diagnostics**: Forecast, residuals, and top-10 feature importance plots.
 
